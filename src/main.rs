@@ -1,48 +1,14 @@
-use std::collections::VecDeque;
-
-fn next(input: &str) -> Result<(usize, &str, &str), Option<usize>> {
-    let mut start_idx = 0;
-    for (i, c) in input.char_indices() {
-        if c.is_whitespace() {
-            start_idx = i + c.len_utf8();
-        } else {
-            break;
-        }
-    }
-
-    let slice = &input[start_idx..];
-    let mut chars = slice.char_indices();
-
-    let (first_i, first_c) = match chars.next() {
-        None => return Err(None),
-        Some(c) => c,
-    };
-
-    if first_c.is_ascii_digit() {
-        let end = slice
-            .char_indices()
-            .skip_while(|&(_, c)| c.is_ascii_digit())
-            .next()
-            .map(|(i, _)| i)
-            .unwrap_or(slice.len());
-
-        Ok((start_idx + first_i, &slice[first_i..end], &slice[end..]))
-    } else if ['+', '-', '*', '/', '%', '(', ')'].contains(&first_c) {
-        let end = first_i + first_c.len_utf8();
-        Ok((start_idx + first_i, &slice[first_i..end], &slice[end..]))
-    } else {
-        Err(Some(start_idx + first_i))
-    }
-}
-
 #[derive(Clone)]
 enum Expression {
     Number(i64),
-    Symbol(char),
-    Exp {
+    Unary {
+        operand: Box<Expression>,
+        operation: char,
+    },
+    Binary {
         left: Box<Expression>,
         right: Box<Expression>,
-        operation: Box<Expression>,
+        operation: char,
     },
 }
 
@@ -50,8 +16,17 @@ impl Expression {
     fn evaluate(&self) -> Option<i64> {
         match self {
             Expression::Number(num) => Some(*num),
-            Expression::Symbol(sym) => None,
-            Expression::Exp {
+            Expression::Unary { operand, operation } => {
+                if let Some(num) = operand.evaluate() {
+                    match operation {
+                        '-' => Some(-num),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            Expression::Binary {
                 left,
                 right,
                 operation,
@@ -61,24 +36,20 @@ impl Expression {
 
                 if let Some(v_l) = l {
                     if let Some(v_r) = r {
-                        if let Expression::Symbol(sym) = **operation {
-                            match sym {
-                                '+' => Some(v_l + v_r),
-                                '-' => Some(v_l - v_r),
-                                '*' => Some(v_l * v_r),
-                                '/' => {
-                                    if v_r == 0 {
-                                        println!("Div by 0 is not allowed");
-                                        None
-                                    } else {
-                                        Some(v_l / v_r)
-                                    }
+                        match *operation {
+                            '+' => Some(v_l + v_r),
+                            '-' => Some(v_l - v_r),
+                            '*' => Some(v_l * v_r),
+                            '/' => {
+                                if v_r == 0 {
+                                    println!("Div by 0 is not allowed");
+                                    None
+                                } else {
+                                    Some(v_l / v_r)
                                 }
-                                '%' => Some(v_l % v_r),
-                                _ => None,
                             }
-                        } else {
-                            None
+                            '%' => Some(v_l % v_r),
+                            _ => panic!("Invalid operation!"),
                         }
                     } else {
                         None
@@ -92,138 +63,84 @@ impl Expression {
 
     fn print(&self) {}
 
-    fn convert_input_to_exp<'a>(mut input: &str) -> Box<Option<Expression>> {
-        let create_exp = |v: &mut VecDeque<Expression>| {
-            let mut idx: Option<usize> = None;
-            for (i, ex) in v.iter().enumerate() {
-                if let Expression::Symbol(sym) = ex {
-                    match sym {
-                        '*' | '%' | '/' => {
-                            idx = Some(i);
-                            break;
-                        }
-                        '+' | '-' => {
-                            idx = Some(i);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            let Some(mut i) = idx else { todo!() };
-
-            let l = Box::new(v.remove(i - 1).unwrap());
-            let op = Box::new(v.remove(i - 1).unwrap());
-            i = if i > v.len() { v.len() } else { i };
-            let r = Box::new(v.remove(i - 1).unwrap());
-
-            Expression::Exp {
-                left: l,
-                right: r,
-                operation: op,
-            }
-        };
-
-        let mut tokens = Box::new(Vec::new());
-        while !input.is_empty() {
-            let res = next(&input);
-            match res {
-                Ok((_, s, st)) => {
-                    tokens.push(s);
-                    input = st;
-                }
-                Err(None) => {}
-                Err(_) => panic!("Invalid expression was found!!"),
-            }
-        }
-
-        let mut symbols: VecDeque<Expression> = VecDeque::new();
-        let mut expressions: Vec<Expression> = Vec::new();
-
-        for &token in tokens.iter() {
-            match token {
-                "+" | "-" | "%" | "/" | "*" => {
-                    symbols.push_back(Expression::Symbol(token.parse().unwrap()))
-                }
-                ")" => {
-                    let exp = create_exp(&mut symbols);
-                    symbols.push_front(exp.clone());
-                    expressions.push(exp);
-                }
-                num => match num.parse::<i64>() {
-                    Ok(n) => {
-                        symbols.push_back(Expression::Number(n));
-                    }
-                    Err(_) => {}
-                },
-            }
-        }
-
-        while symbols.len() != 1 {
-            let exp = create_exp(&mut symbols);
-            symbols.push_front(exp.clone());
-            expressions.push(exp);
-        }
-
-        Box::new(expressions.pop())
-    }
-
     fn tree(&self) {
-        self.tree_rec("", true, true);
+        self.tree_rec(0, true);
     }
 
-    fn tree_rec<'a>(&self, tab: &str, last: bool, root: bool) {
+    fn tree_rec<'a>(&self, level: usize, last: bool) {
+        if level > 0 {
+            for _ in 1..level {
+                print!("| ");
+            }
+
+            if last {
+                print!("└─ ");
+            } else {
+                print!("├─ ");
+            }
+        }
+
         match self {
             Expression::Number(num) => {
-                println!(
-                    "{}{}{}",
-                    tab,
-                    if root {
-                        ""
-                    } else if last {
-                        "└─ "
-                    } else {
-                        "├─ "
-                    },
-                    num
-                );
+                println!("{}", num);
             }
-            Expression::Symbol(sym) => {
-                println!(
-                    "{}{}{}",
-                    tab,
-                    if root {
-                        ""
-                    } else if last {
-                        "└─ "
-                    } else {
-                        "├─ "
-                    },
-                    sym
-                );
+            Expression::Unary { operand, operation } => {
+                println!("{}", *operation);
+                operand.tree_rec(level + 1, true);
             }
-            Expression::Exp {
+            Expression::Binary {
                 left,
                 right,
                 operation,
             } => {
-                operation.tree_rec(tab, false, root);
-                let pre: &str = &format!("{}{}", tab, if last { "   " } else { "│  " });
-                left.tree_rec(&pre, false, false);
-                right.tree_rec(&pre, true, false);
+                println!("{}", *operation);
+                left.tree_rec(level + 1, false);
+                right.tree_rec(level + 1, true);
             }
         }
     }
 }
 
-fn main() {}
+fn main() {
+    let exp = Expression::Binary {
+        left: Box::new(Expression::Binary {
+            left: Box::new(Expression::Binary {
+                left: Box::new(Expression::Binary {
+                    left: Box::new(Expression::Unary {
+                        operand: Box::new(Expression::Binary {
+                            left: Box::new(Expression::Number(10)),
+                            right: Box::new(Expression::Number(20)),
+                            operation: '+',
+                        }),
+                        operation: '-',
+                    }),
+                    right: Box::new(Expression::Number(30)),
+                    operation: '+',
+                }),
+                right: Box::new(Expression::Number(40)),
+                operation: '+',
+            }),
+            right: Box::new(Expression::Binary {
+                left: Box::new(Expression::Number(50)),
+                right: Box::new(Expression::Number(60)),
+                operation: '+',
+            }),
+            operation: '+',
+        }),
+        right: Box::new(Expression::Unary {
+            operand: Box::new(Expression::Number(5)),
+            operation: '-',
+        }),
+        operation: '*',
+    };
+    exp.tree();
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn test(input: &str, output: Option<i64>) {
-        let exp = Expression::convert_input_to_exp(&input).unwrap();
+    fn test(exp: &Expression, output: Option<i64>) {
         exp.tree();
         let res = exp.evaluate();
         match res {
@@ -239,20 +156,99 @@ mod tests {
 
     #[test]
     fn exp1() {
-        test("10 + 20", Some(30));
+        let exp = Expression::Binary {
+            left: Box::new(Expression::Number(10)),
+            right: Box::new(Expression::Number(20)),
+            operation: '+',
+        };
+        test(&exp, Some(30));
     }
 
     #[test]
     fn exp2() {
-        test("10 / 0", None);
+        let exp = Expression::Binary {
+            left: Box::new(Expression::Number(10)),
+            right: Box::new(Expression::Number(0)),
+            operation: '/',
+        };
+        test(&exp, None);
     }
 
     #[test]
     fn exp3() {
-        test("(10 + 20) * 30", Some(900));
+        let exp = Expression::Binary {
+            left: Box::new(Expression::Binary {
+                left: Box::new(Expression::Number(10)),
+                right: Box::new(Expression::Number(20)),
+                operation: '+',
+            }),
+            right: Box::new(Expression::Number(30)),
+            operation: '*',
+        };
+        test(&exp, Some(900));
     }
+
     #[test]
     fn exp4() {
-        test("10 + 20 * 30", Some(610));
+        let exp = Expression::Binary {
+            left: Box::new(Expression::Number(10)),
+            right: Box::new(Expression::Binary {
+                left: Box::new(Expression::Number(20)),
+                right: Box::new(Expression::Number(30)),
+                operation: '*',
+            }),
+            operation: '+',
+        };
+        test(&exp, Some(610));
+    }
+
+    #[test]
+    fn exp5() {
+        let exp = Expression::Binary {
+            left: Box::new(Expression::Unary {
+                operand: Box::new(Expression::Number(10)),
+                operation: '-',
+            }),
+            right: Box::new(Expression::Number(2)),
+            operation: '/',
+        };
+
+        test(&exp, Some(-5));
+    }
+
+    #[test]
+    fn exp6() {
+        let exp = Expression::Binary {
+            left: Box::new(Expression::Binary {
+                left: Box::new(Expression::Binary {
+                    left: Box::new(Expression::Binary {
+                        left: Box::new(Expression::Unary {
+                            operand: Box::new(Expression::Binary {
+                                left: Box::new(Expression::Number(10)),
+                                right: Box::new(Expression::Number(20)),
+                                operation: '+',
+                            }),
+                            operation: '-',
+                        }),
+                        right: Box::new(Expression::Number(30)),
+                        operation: '+',
+                    }),
+                    right: Box::new(Expression::Number(40)),
+                    operation: '+',
+                }),
+                right: Box::new(Expression::Binary {
+                    left: Box::new(Expression::Number(50)),
+                    right: Box::new(Expression::Number(60)),
+                    operation: '+',
+                }),
+                operation: '+',
+            }),
+            right: Box::new(Expression::Unary {
+                operand: Box::new(Expression::Number(5)),
+                operation: '-',
+            }),
+            operation: '*',
+        };
+        test(&exp, Some(-750));
     }
 }
