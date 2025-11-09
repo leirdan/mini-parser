@@ -68,8 +68,6 @@ impl Expression {
             }
             Expression::Unary { operand, .. } => {
                 print!("-");
-                // Se a expressão é unária e o operando é número, não imprime;
-                // se é outra expressão, imprime
                 if matches!(**operand, Expression::Number(_)) {
                     operand.print();
                 } else {
@@ -83,16 +81,13 @@ impl Expression {
                 right,
                 operation,
             } => {
-                // Se a expressão é binária e as duas partes são números, não imprime parênteses
                 if matches!(**left, Expression::Number(_))
                     && matches!(**right, Expression::Number(_))
                 {
                     left.print();
                     print!(" {} ", *operation);
                     right.print();
-                }
-                // Se ao menos uma das duas é uma expressão binária, imprime parênteses na que for e evalua
-                else if (matches!(**left, Expression::Binary { .. })
+                } else if (matches!(**left, Expression::Binary { .. })
                     && matches!(**right, Expression::Number(_)))
                 {
                     print!("(");
@@ -108,9 +103,7 @@ impl Expression {
                     print!("(");
                     right.print();
                     print!(")");
-                }
-                // Se ao menos uma das duas é uma expressão unária, imprime parênteses na que for e evalua
-                else if (matches!(**left, Expression::Unary { .. })
+                } else if (matches!(**left, Expression::Unary { .. })
                     && matches!(**right, Expression::Number(_)))
                 {
                     print!("(");
@@ -209,6 +202,13 @@ fn main() {
     };
     exp.tree();
     exp.print();
+    println!("");
+    match exp.evaluate() {
+        None => {}
+        Some(res) => {
+            println!("Resultado: Some({})", res);
+        }
+    }
 }
 
 #[cfg(test)]
