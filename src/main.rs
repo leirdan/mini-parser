@@ -61,7 +61,81 @@ impl Expression {
         }
     }
 
-    fn print(&self) {}
+    fn print(&self) {
+        match self {
+            Expression::Number(num) => {
+                print!("{}", num);
+            }
+            Expression::Unary { operand, .. } => {
+                print!("-");
+                // Se a expressão é unária e o operando é número, não imprime;
+                // se é outra expressão, imprime
+                if matches!(**operand, Expression::Number(_)) {
+                    operand.print();
+                } else {
+                    print!("(");
+                    operand.print();
+                    print!(")");
+                }
+            }
+            Expression::Binary {
+                left,
+                right,
+                operation,
+            } => {
+                // Se a expressão é binária e as duas partes são números, não imprime parênteses
+                if matches!(**left, Expression::Number(_))
+                    && matches!(**right, Expression::Number(_))
+                {
+                    left.print();
+                    print!(" {} ", *operation);
+                    right.print();
+                }
+                // Se ao menos uma das duas é uma expressão binária, imprime parênteses na que for e evalua
+                else if (matches!(**left, Expression::Binary { .. })
+                    && matches!(**right, Expression::Number(_)))
+                {
+                    print!("(");
+                    left.print();
+                    print!(")");
+                    print!(" {} ", *operation);
+                    right.print();
+                } else if (matches!(**left, Expression::Number(_))
+                    && matches!(**right, Expression::Binary { .. }))
+                {
+                    left.print();
+                    print!(" {} ", *operation);
+                    print!("(");
+                    right.print();
+                    print!(")");
+                }
+                // Se ao menos uma das duas é uma expressão unária, imprime parênteses na que for e evalua
+                else if (matches!(**left, Expression::Unary { .. })
+                    && matches!(**right, Expression::Number(_)))
+                {
+                    print!("(");
+                    left.print();
+                    print!(")");
+                    print!(" {} ", *operation);
+                    right.print();
+                } else if (matches!(**left, Expression::Number(_))
+                    && matches!(**right, Expression::Unary { .. }))
+                {
+                    left.print();
+                    print!(" {} ", *operation);
+                    print!("(");
+                    right.print();
+                    print!(")");
+                } else {
+                    print!("(");
+                    left.print();
+                    print!(" {} ", *operation);
+                    right.print();
+                    print!(")");
+                }
+            }
+        }
+    }
 
     fn tree(&self) {
         self.tree_rec(0, true);
@@ -134,6 +208,7 @@ fn main() {
         operation: '*',
     };
     exp.tree();
+    exp.print();
 }
 
 #[cfg(test)]
