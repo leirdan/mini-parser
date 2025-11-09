@@ -20,7 +20,7 @@ impl Expression {
                 if let Some(num) = operand.evaluate() {
                     match operation {
                         '-' => Some(-num),
-                        _ => None,
+                        _ => panic!("Error while evaluating unary operation"),
                     }
                 } else {
                     None
